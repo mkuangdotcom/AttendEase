@@ -29,9 +29,6 @@ while True:
     backgroundImg[44:44+633, 808:808 +414] = imageListMode[0]
 
 
-    # show a window for your webcam
-    # cv2.imshow("My WebCam", image)
-
     # show a window for your system
     cv2.imshow("Attendance System", backgroundImg)
     cv2.waitKey(1)
