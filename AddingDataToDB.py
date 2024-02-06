@@ -26,7 +26,7 @@ data = {
         "name" : "Foo Ming Kuang",
         "major" : "CS(SE)",
         "starting_year" : 2023,
-        "total_attendance" : 20,
+        "total_attendance" : 10,
         "grades" : "A+",
         "year" : 2,
         "last_attendance_taken" : "2024-01-26 16:10:30",
