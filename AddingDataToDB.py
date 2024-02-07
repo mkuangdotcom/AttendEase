@@ -35,7 +35,7 @@ data = {
         "name": "Dalton Gan",
         "major": "SE",
         "starting_year": 2024,
-        "total_attendance": 100,
+        "total_attendance": 4,
         "standing": "A++",
         "year": 2,
         "last_attendance_time": "2024-01-02 12:06:02"
@@ -69,6 +69,8 @@ data = {
     },
 }
 
+# This is how to "unzip a dictionary in Python"
 # writing the dictionary details into the realtime database
 for key, value in data.items():
+    # Storing the vaue in the dictionary "children" for the key in the ref you created ("Students")
     ref.child(key).set(value)
