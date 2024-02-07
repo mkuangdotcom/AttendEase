@@ -37,9 +37,3 @@ Here are some illustrative examples of our solution's functionality:
 - Leverage numpy for efficient numerical computations.
 - Enhance OpenCV capabilities with cvzone for interactive and polished overlays.
 - Manage known face encodings with pickle for streamlined data handling.
-
-## Get Started 🏁
-
-Ready to get started? Clone this repository and explore the features today!
-
-We wish you productive coding! 😄
