@@ -1,6 +1,6 @@
 # Project Overview 🚀
 
-Welcome to our project! Below, you'll find details about the languages, libraries, and features integrated into our professional-grade solution.
+Welcome to my face recgonition attendance system project! Below, you'll find details about the languages, libraries, and features integrated into our professional-grade solution.
 
 ## Language and Libraries Utilized 📚
 
