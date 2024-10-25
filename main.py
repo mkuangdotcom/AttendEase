@@ -35,7 +35,7 @@ def update_attendance(student_id):
         print(f"Error: Student {student_id} not found in database")
         return False
     
-    # Update attendance count and timestamp
+    # Update attendance and timestamp
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     new_attendance = student_info.get('total_attendance', 0) + 1
     
@@ -132,7 +132,3 @@ try:
 finally:
     capture.release()
     cv2.destroyAllWindows()
-
-
-
-
