@@ -11,14 +11,14 @@ from firebase_admin import credentials
 from datetime import datetime
 import time
 
-# Initialize variables
-modeType = 1  # Initialize to 1 (2.png - scanning mode)
+
+modeType = 1  
 attendance_marked = False  # Track if attendance was marked in this session
 transition_time = None  # Track when mode changes occur
 DELAY_DURATION = 2  # Seconds to show each transition screen
 current_sequence = None  # Track the current transition sequence
 
-# Firebase setup
+# Firebase
 cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred, {
     'databaseURL': "https://attendanceproject-b8993-default-rtdb.firebaseio.com/",
@@ -60,7 +60,7 @@ try:
     modeFolderPath = 'Resources/Modes'
     modePathList = os.listdir(modeFolderPath)
     imgModeList = []
-    for path in sorted(modePathList):  # Sort to ensure consistent order
+    for path in sorted(modePathList):
         imgModeList.append(cv2.imread(os.path.join(modeFolderPath, path)))
 
     # Load encodings
@@ -71,20 +71,18 @@ try:
 
     # Main loop
     while True:
-        success, img = capture.read()
-        if not success:
-            print("Failed to grab frame")
-            break
+            success, img = capture.read()
+            if not success:
+                print("Failed to grab frame")
+                break
 
-        imageSmall = cv2.resize(img, (0, 0), None, 0.25, 0.25)
-        imageSmall = cv2.cvtColor(imageSmall, cv2.COLOR_BGR2RGB)
+            imageSmall = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+            imageSmall = cv2.cvtColor(imageSmall, cv2.COLOR_BGR2RGB)
 
-        # Update the background with camera feed
-        screenBg[162:162 + 480, 55:55 + 640] = img
-        screenBg[44:44 + 633, 808:808 + 414] = imgModeList[modeType]
+            # Update the background with camera feed
+            screenBg[162:162 + 480, 55:55 + 640] = img
+            screenBg[44:44 + 633, 808:808 + 414] = imgModeList[modeType]
 
-        # Only detect faces if we're not in a transition sequence
-        if current_sequence is None:
             faceCurrentFrame = face_recognition.face_locations(imageSmall)
             encodeCurrentFrame = face_recognition.face_encodings(imageSmall, faceCurrentFrame)
 
@@ -95,6 +93,7 @@ try:
                     matchIndex = np.argmin(faceDistance)
 
                     if matches[matchIndex]:
+                        # Draw face rectangle
                         y1, x2, y2, x1 = faceLocation
                         y1, x2, y2, x1 = y1*4, x2*4, y2*4, x1*4
                         bbox = 55 + x1, 162 + y1, x2-x1, y2-y1
@@ -102,54 +101,38 @@ try:
                         id = studentIds[matchIndex]
 
                         if not attendance_marked:
-                            print("Registered Student Detected.")
-                            print(studentIds[matchIndex])
-                            
+                            # First detection - mark attendance
                             if update_attendance(id):
-                                # Start transition sequence
-                                current_sequence = [
-                                    (2, "Attendance Marked"),  # 3.png
-                                    (0, "Ready for Next Scan"),  # 1.png
-                                    (1, "Back to Scanning")  # 2.png
-                                ]
-                                transition_time = time.time()
-                                modeType = current_sequence[0][0]
-                                print(f"Showing: {current_sequence[0][1]}")
+                                current_student_id = id
+                                modeType = 2  # Show 3.png (Attendance Marked)
                                 attendance_marked = True
-                                
-                                studentInfo = db.reference(f'Students/{id}').get()
-                                print(studentInfo)
+                                time.sleep(1)  # Show "Attendance Marked" briefly
                         else:
-                            modeType = 3  # Show 4.png (attendance already taken)
+                            # Check if it's the same student
+                            if id == current_student_id:
+                                modeType = 3  # Show 4.png (Attendance Already Taken)
+                            else:
+                                # New student detected
+                                if update_attendance(id):
+                                    current_student_id = id
+                                    modeType = 2  # Show 3.png for new student
+                                    time.sleep(1)  # Show "Attendance Marked" briefly
             else:
-                # Only reset if we're not in a transition sequence
-                if not current_sequence:
-                    modeType = 1
+                # No face detected, return to scanning mode
+                modeType = 1  # Show 2.png (scanning mode)
+                if not faceCurrentFrame:
                     attendance_marked = False
+                    current_student_id = None
 
-        # Handle transition sequence
-        if current_sequence:
-            current_time = time.time()
-            if current_time - transition_time >= DELAY_DURATION:
-                current_sequence.pop(0)  # Remove the current mode
-                
-                if current_sequence:  # If there are more modes to show
-                    modeType = current_sequence[0][0]
-                    print(f"Showing: {current_sequence[0][1]}")
-                    transition_time = current_time
-                else:  # End of sequence
-                    current_sequence = None
-                    modeType = 1  # Back to scanning mode
-                    print("Back to scanning mode")
-
-        cv2.imshow("Face Attendance System", screenBg)
-        
-        # Break the loop if 'q' is pressed
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            cv2.imshow("Face Attendance System", screenBg)
+            
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
 finally:
-    # Cleanup
     capture.release()
     cv2.destroyAllWindows()
-    print("Camera released and windows closed")
+
+
+
+
