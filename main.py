@@ -9,7 +9,7 @@ from firebase_admin import db
 from firebase_admin import storage
 from firebase_admin import credentials
 import numpy as np
-from datetime import datetime #NEW IMPORT
+from datetime import datetime 
 
 cred = credentials.Certificate("serviceAccountKey.json")
 
