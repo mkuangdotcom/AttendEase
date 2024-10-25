@@ -1,4 +1,4 @@
-import cv2          # Image Regonition Library
+import cv2
 import os
 import pickle
 import face_recognition
@@ -8,11 +8,18 @@ import firebase_admin
 from firebase_admin import db
 from firebase_admin import storage
 from firebase_admin import credentials
-import numpy as np
-from datetime import datetime 
+from datetime import datetime
+import time
 
+# Initialize variables
+modeType = 1  # Initialize to 1 (2.png - scanning mode)
+attendance_marked = False  # Track if attendance was marked in this session
+transition_time = None  # Track when mode changes occur
+DELAY_DURATION = 2  # Seconds to show each transition screen
+current_sequence = None  # Track the current transition sequence
+
+# Firebase setup
 cred = credentials.Certificate("serviceAccountKey.json")
-
 firebase_admin.initialize_app(cred, {
     'databaseURL': "https://attendanceproject-b8993-default-rtdb.firebaseio.com/",
     'storageBucket': "attendanceproject-b8993.appspot.com"
@@ -20,158 +27,129 @@ firebase_admin.initialize_app(cred, {
 
 bucket = storage.bucket()
 
+def update_attendance(student_id):
+    ref = db.reference(f'Students/{student_id}')
+    student_info = ref.get()
+    
+    if student_info is None:
+        print(f"Error: Student {student_id} not found in database")
+        return False
+    
+    # Update attendance count and timestamp
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    new_attendance = student_info.get('total_attendance', 0) + 1
+    
+    # Update the database
+    ref.update({
+        'total_attendance': new_attendance,
+        'last_attendance_taken': current_time
+    })
+    
+    print(f"Attendance updated successfully. New count: {new_attendance}")
+    return True
 
-#initializing webcam and reading background image
-capture =cv2.VideoCapture(0)            # If using built-in webcam use 0, otherwise 1
-capture.set(3,640)         # width of window
-capture.set(4,480)          # height of window
-backgroundImg = cv2.imread('Resources/Background.png')
+try:
+    # Camera setup
+    capture = cv2.VideoCapture(0)
+    capture.set(3, 640)
+    capture.set(4, 480)
 
-# Importing images from Modes
-folderPathMode = 'Resources/Modes'          # Creating a path
-listPathMode = os.listdir(folderPathMode)
-imgListMode = []
+    screenBg = cv2.imread('Resources/background.png')
 
-for path in listPathMode:
-    imgListMode.append(cv2.imread(os.path.join(folderPathMode,path)))
+    # Import mode images
+    modeFolderPath = 'Resources/Modes'
+    modePathList = os.listdir(modeFolderPath)
+    imgModeList = []
+    for path in sorted(modePathList):  # Sort to ensure consistent order
+        imgModeList.append(cv2.imread(os.path.join(modeFolderPath, path)))
 
-# Importing encodings into main.py
-encodingsFile = open('EncodingsFile.p',"rb")
-encodingsListWithIDs = pickle.load(encodingsFile)
-encodingsFile.close()
+    # Load encodings
+    file = open("EncodingsFile.p", 'rb')
+    encodeListKnownWithIds = pickle.load(file)
+    file.close()
+    encodeListKnown, studentIds = encodeListKnownWithIds
 
-encodingsListKnown, studentIDs = encodingsListWithIDs
-print(studentIDs)
+    # Main loop
+    while True:
+        success, img = capture.read()
+        if not success:
+            print("Failed to grab frame")
+            break
 
-# creating a new variable called modeType
-modeType = 0
-counter = 0
-id = -1
+        imageSmall = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+        imageSmall = cv2.cvtColor(imageSmall, cv2.COLOR_BGR2RGB)
 
-while True:
-    success, image = capture.read()   
+        # Update the background with camera feed
+        screenBg[162:162 + 480, 55:55 + 640] = img
+        screenBg[44:44 + 633, 808:808 + 414] = imgModeList[modeType]
 
-    # onto the position of 162:162 + 480, 55:55 + 640, you are pasting your 
-    # webcam over the backgroundImg 
-    image = cv2.resize(image, (640,480))
-    backgroundImg[162:162 + 480, 55:55 +640] = image
-    #overlay the FIRST element within the imgListMode on top of the background
-    backgroundImg[44:44 + 633,808: 808+414] = imgListMode[modeType]
+        # Only detect faces if we're not in a transition sequence
+        if current_sequence is None:
+            faceCurrentFrame = face_recognition.face_locations(imageSmall)
+            encodeCurrentFrame = face_recognition.face_encodings(imageSmall, faceCurrentFrame)
 
-    # resize image because we will require a lot of computational power if we try to encode images that are large
-    # making each frame taken from yout webcam 1/4 of its actual size
-    smallImage = cv2.resize(image, (0,0), None, 0.25, 0.25)
-    # converting the image to rgb color format
-    smallImage  = cv2.cvtColor(smallImage, cv2.COLOR_BGR2RGB)
+            if faceCurrentFrame:
+                for encodeFace, faceLocation in zip(encodeCurrentFrame, faceCurrentFrame):
+                    matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
+                    faceDistance = face_recognition.face_distance(encodeListKnown, encodeFace)
+                    matchIndex = np.argmin(faceDistance)
 
-    # FINDING the face in the current webcam frame
-    faceCurrentFrame = face_recognition.face_locations(smallImage)
-    # encoding the face found in the image
-    encodeCurrentFrame = face_recognition.face_encodings(smallImage, faceCurrentFrame)
-   
-    if faceCurrentFrame:
+                    if matches[matchIndex]:
+                        y1, x2, y2, x1 = faceLocation
+                        y1, x2, y2, x1 = y1*4, x2*4, y2*4, x1*4
+                        bbox = 55 + x1, 162 + y1, x2-x1, y2-y1
+                        screenBg = cvzone.cornerRect(screenBg, bbox, rt=0)
+                        id = studentIds[matchIndex]
 
-        for encodeFace, faceLocation in zip(encodeCurrentFrame, faceCurrentFrame):
-            matches = face_recognition.compare_faces(encodingsListKnown, encodeFace)
-            # measures how likely your face is, the lower the score the more likely you are to the face
-            faceDistance = face_recognition.face_distance(encodingsListKnown, encodeFace)
-            matchIndex = np.argmin(faceDistance)
-
-            if matches[matchIndex]:
-                print("Registered Student Detected")
-                print(studentIDs[matchIndex])
-
-                # creating four points to map as the "corners" of your face
-                y1, x2, x1, y2 = faceLocation
-                # resizing it to the actual size of the webcam feed
-                y1, x2, x1, y2 = y1*4, x2*4, x1*4,y2*4
-                # creating a boc that has line that wrap around our face
-                bbox = 55+x1, 162 + y1, x2 - x1, y2 - y1
-                # having the rectangle we drew follow our face around , rt=0 means you're not outlining the box
-                backgroundImg = cvzone.cornerRect(backgroundImg, bbox, rt = 0)
-                id = studentIDs[matchIndex]
-
-                if counter == 0:
-                    counter = 1
-                    modeType = 1 # change THIS to 1 so you can update the graphics at the side of the page
-
-                if counter != 0:
-
-                    if counter == 1:
-                        # Retrieveing students information from the database
-                        studentInfo = db.reference(f'students/{id}').get()
-                        print(studentInfo)
-                        
-                        # Retrieving student's image from the storage
-                        blob = bucket.get_blob(f'Images/{id}.png')
-                        array = np.frombuffer(blob.download_as_string(), np.uint8)
-                        studentImg = cv2.imdecode(array, cv2.COLOR_BGRA2BGR)
-
-
-                        # Update attendance record and data
-
-                        datetimeObject = datetime.strptime(studentInfo['last_attendance_taken'],
-                                                        "%Y-%m%d %H:%M:%S")
-                                                        
-                        timeInSecsElapsed = (datetime.now() - datetimeObject).total_seconds()
-                        if timeInSecsElapsed > 30:
-                        
-                            ref = db.reference(f'Students/{id}')
-                            studentInfo['total_attendance'] += 1
-
-                            ref.child('total_attendance').set(studentInfo['total_attendance'])
-                            ref.child('last_attendance_taken').set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                        if not attendance_marked:
+                            print("Registered Student Detected.")
+                            print(studentIds[matchIndex])
+                            
+                            if update_attendance(id):
+                                # Start transition sequence
+                                current_sequence = [
+                                    (2, "Attendance Marked"),  # 3.png
+                                    (0, "Ready for Next Scan"),  # 1.png
+                                    (1, "Back to Scanning")  # 2.png
+                                ]
+                                transition_time = time.time()
+                                modeType = current_sequence[0][0]
+                                print(f"Showing: {current_sequence[0][1]}")
+                                attendance_marked = True
+                                
+                                studentInfo = db.reference(f'Students/{id}').get()
+                                print(studentInfo)
                         else:
-                            modeType = 3
-                            counter = 0
-                            backgroundImg[44:44+633, 808:808+414] = imgListMode[modeType]
+                            modeType = 3  # Show 4.png (attendance already taken)
+            else:
+                # Only reset if we're not in a transition sequence
+                if not current_sequence:
+                    modeType = 1
+                    attendance_marked = False
 
-                if modeType != 3:
+        # Handle transition sequence
+        if current_sequence:
+            current_time = time.time()
+            if current_time - transition_time >= DELAY_DURATION:
+                current_sequence.pop(0)  # Remove the current mode
+                
+                if current_sequence:  # If there are more modes to show
+                    modeType = current_sequence[0][0]
+                    print(f"Showing: {current_sequence[0][1]}")
+                    transition_time = current_time
+                else:  # End of sequence
+                    current_sequence = None
+                    modeType = 1  # Back to scanning mode
+                    print("Back to scanning mode")
 
-                    if 10 < counter < 20:
-                        modeType = 2
+        cv2.imshow("Face Attendance System", screenBg)
+        
+        # Break the loop if 'q' is pressed
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-                    backgroundImg[44:44+633, 808:808+414] = imgListMode[modeType]
-
-                    if counter < 10:
-
-                        #indent this properly
-                        # all will execute while modeType = 1
-
-                        cv2.putText(backgroundImg, str(studentInfo['total_attendance']),(861,125),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255),1)
-                        cv2.putText(backgroundImg, str(studentInfo['major']),(1006,550),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255),1)
-                        cv2.putText(backgroundImg, str(studentInfo['grades']),(910,625),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (100,100,100),1)
-                        cv2.putText(backgroundImg, str(studentInfo['tyear']),(1025,625),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (100,100,100),1)
-                        cv2.putText(backgroundImg, str(studentInfo['starting_year']),(1125,625),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (100,100,100),1)
-                        
-                        # in order to center the name, calculation needs to be performed
-                        (width, height), _ = cv2.getTextSize(studentInfo['name'],cv2.FONT_HERSHEY_SIMPLEX,1,1)
-                                    
-                        # we are using a double // because that get rid og trailing float numbers
-                        centre_offset = (414 - width)//2
-                        cv2.putText(backgroundImg, str(studentInfo)['name'],(808 + centre_offset,445),
-                                    cv2.FONT_HERSHEY_SIMPLEX,1,(50,50,50),1)
-                        
-                        backgroundImg[175:175 + 216, 909:909 + 216] = studentImg
-                    
-                    counter += 1
-
-                    if counter > 20:
-                        counter = 0
-                        modeType = 0
-                        studentInfo = []
-                        studentImg = []
-                        backgroundImg[44:44+633, 808:808+414] = imgListMode[modeType]
-
-            else: 
-                modeType = 0
-                counter = 0
-
-        # showing the window for your backgroundImg
-        cv2.imshow("Attendance System", backgroundImg)
-        cv2.waitKey(1)
+finally:
+    # Cleanup
+    capture.release()
+    cv2.destroyAllWindows()
+    print("Camera released and windows closed")
